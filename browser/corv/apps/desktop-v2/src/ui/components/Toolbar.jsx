@@ -1,145 +1,70 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useStore, selectActiveTab } from '../store.js';
-import { useUi } from '../uiBus.js';
-import { isNewTab, domainLabel } from '../lib/util.js';
-import { activeView } from '../lib/webviews.js';
-import { SearchIcon, SparkleIcon, UserIcon, ClockIcon, StarIcon, BookmarkIcon, DownloadIcon, SettingsIcon, MicIcon, CameraIcon, BackIcon, ForwardIcon, ReloadIcon, StopIcon } from './icons.jsx';
+import { useStore, NEW_TAB, AI_TAB } from '../store.js';
+import { ArrowLeft, ArrowRight, RotateCw, Star, DownloadIcon, MoreVertical, GoogleG, VCMark, PanelLeft } from './icons.jsx';
+import { goBack, goForward, reload } from '../lib/webviews.js';
 
-export default function Toolbar() {
-  const activeTab = useStore(selectActiveTab);
-  const signedIn = useStore((s) => s.googleSignedIn);
-  const bookmarks = useStore((s) => s.bookmarks);
-  const downloads = useStore((s) => s.downloads);
-  const history = useStore((s) => s.history);
-  const omniboxAi = useStore((s) => s.settings.omniboxAi !== false);
-  const loading = Boolean(activeTab?.loading);
-  const store = useStore.getState;
-  const ui = useUi.getState;
-
+export default function Toolbar({ railHidden, onToggleRail }) {
+  const tabs = useStore((s) => s.tabs);
+  const activeId = useStore((s) => s.activeId);
+  const navigate = useStore((s) => s.navigate);
+  const tab = tabs.find((t) => t.id === activeId);
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
-  const [items, setItems] = useState([]);
-  const [highlight, setHighlight] = useState(-1);
-  const abortRef = useRef(null);
   const inputRef = useRef(null);
 
-  const tabUrl = activeTab && !isNewTab(activeTab.url) ? activeTab.url : '';
-  const bookmarked = Boolean(tabUrl && bookmarks.some((item) => item.url === tabUrl));
-  const downloading = downloads.some((item) => item.state === 'progressing');
+  const isAi = tab?.url === AI_TAB;
 
-  useEffect(() => { if (!focused) setValue(tabUrl); }, [tabUrl, focused]);
-  useEffect(() => { document.body.classList.toggle('page-loading', loading); }, [loading]);
+  useEffect(() => {
+    if (!focused) setValue(tab ? (tab.url === NEW_TAB ? '' : isAi ? 'corv://ai' : tab.url) : '');
+  }, [tab?.url, tab?.id, focused, isAi]);
 
-  const updateSuggestions = async (query) => {
-    const trimmed = query.trim();
-    if (!trimmed || trimmed.length > 120) return setItems([]);
-    const lower = trimmed.toLowerCase();
-    const fromHistory = history.filter((item) => item.url.toLowerCase().includes(lower) || (item.title || '').toLowerCase().includes(lower)).slice(0, 3)
-      .map((item) => ({ type: 'history', label: item.title || domainLabel(item.url), detail: item.url, value: item.url }));
-    let fromGoogle = [];
-    try {
-      abortRef.current?.abort(); abortRef.current = new AbortController();
-      const response = await fetch(`https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(trimmed)}`, { signal: abortRef.current.signal });
-      const data = await response.json();
-      fromGoogle = (data?.[1] || []).slice(0, 5).map((text) => ({ type: 'search', label: text, detail: 'Google Search', value: text }));
-    } catch { /* offline/aborted */ }
-    setItems([...fromHistory, ...fromGoogle].slice(0, 7));
-    setHighlight(-1);
-  };
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
-  const commit = (destination) => {
-    setItems([]); setHighlight(-1);
+  const submit = () => {
+    if (!tab || !value.trim()) return;
+    navigate(tab.id, value);
     inputRef.current?.blur();
-    store().navigateActive(destination);
-  };
-
-  const onKeyDown = (event) => {
-    if (!items.length) return;
-    if (event.key === 'ArrowDown') { event.preventDefault(); const next = (highlight + 1) % items.length; setHighlight(next); setValue(items[next].value); }
-    else if (event.key === 'ArrowUp') { event.preventDefault(); const next = (highlight - 1 + items.length) % items.length; setHighlight(next); setValue(items[next].value); }
-    else if (event.key === 'Enter' && highlight >= 0) { event.preventDefault(); commit(items[highlight].value); }
-    else if (event.key === 'Escape') { event.stopPropagation(); setItems([]); }
   };
 
   return (
-    <header className="browser-toolbar" aria-label="Browser toolbar">
-      <div className="navigation-controls" aria-label="Navigation">
-        <button type="button" aria-label="Back" title="Back" disabled={!activeTab?.canGoBack} onClick={() => activeView()?.goBack()}><BackIcon /></button>
-        <button type="button" aria-label="Forward" title="Forward" disabled={!activeTab?.canGoForward} onClick={() => activeView()?.goForward()}><ForwardIcon /></button>
-        <button type="button" aria-label={loading ? 'Stop' : 'Reload'} title={loading ? 'Stop loading' : 'Reload'} onClick={() => { const view = activeView(); if (!view) return; if (loading) view.stop(); else view.reload(); }}>
-          {loading ? <StopIcon className="stop-icon" /> : <ReloadIcon className="reload-icon" />}
-        </button>
+    <div className="toolbar dragRegion">
+      <div className="navBtns noDrag">
+        <button className={railHidden ? '' : 'panelOn'} onClick={onToggleRail} title={railHidden ? 'Show sidebar' : 'Hide sidebar'}><PanelLeft size={17} /></button>
+        <button disabled={!tab?.canGoBack} onClick={() => goBack(activeId)} title="Back"><ArrowLeft size={17} /></button>
+        <button disabled={!tab?.canGoForward} onClick={() => goForward(activeId)} title="Forward"><ArrowRight size={17} /></button>
+        <button onClick={() => tab?.url !== NEW_TAB && reload(activeId)} title="Reload"><RotateCw size={15} /></button>
       </div>
-      <form className="omnibox" onSubmit={(event) => { event.preventDefault(); commit(value); }}>
-        <SearchIcon className="omnibox-search-icon" />
+      <div className={`omnibox noDrag ${focused ? 'focused' : ''}`}>
+        <span className="omniIcon">{isAi ? <VCMark size={15} /> : <GoogleG size={15} />}</span>
         <input
-          id="omniboxInput"
           ref={inputRef}
-          autoComplete="off"
-          spellCheck="false"
-          placeholder="Search Google or Ask Corv..."
-          aria-label="Search Google or Ask Corv"
           value={value}
-          onChange={(event) => { setValue(event.target.value); updateSuggestions(event.target.value); }}
-          onFocus={(event) => { setFocused(true); event.target.select(); }}
-          onBlur={() => { setFocused(false); setTimeout(() => setItems([]), 120); }}
-          onKeyDown={onKeyDown}
+          placeholder="Search Google or type a URL"
+          onChange={(e) => setValue(e.target.value)}
+          onFocus={(e) => { setFocused(true); e.target.select(); }}
+          onBlur={() => setFocused(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+            if (e.key === 'Escape') { setValue(tab?.url !== NEW_TAB ? tab.url : ''); inputRef.current?.blur(); }
+          }}
+          spellCheck={false}
         />
-        <AnimatePresence>
-          {items.length > 0 && focused && (
-            <motion.div
-              className="omnibox-suggestions"
-              initial={{ opacity: 0, y: -4, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4, scale: 0.98 }}
-              transition={{ duration: 0.15, ease: [0.33, 1, 0.68, 1] }}
-            >
-              {items.map((item, index) => (
-                <button key={`${item.type}-${item.value}`} type="button" className={index === highlight ? 'active' : ''} onMouseDown={(event) => { event.preventDefault(); commit(item.value); }}>
-                  {item.type === 'history'
-                    ? <ClockIcon />
-                    : <SearchIcon />}
-                  <strong>{item.label}</strong>
-                  <small>{item.detail}</small>
-                </button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <span className="omnibox-oic" role="button" aria-label="Voice search" title="Voice search"><MicIcon /></span>
-        <span className="omnibox-oic" role="button" aria-label="Search by image" title="Search by image"><CameraIcon /></span>
-        {omniboxAi && (
-          <button type="button" className="ask-corv-chip" aria-label="Ask Corv" title="Ask Corv"
-            onClick={(event) => { event.preventDefault(); store().setAiOpen(true); }}>
-            <SparkleIcon />Ask Corv
-          </button>
-        )}
-        <button
-          id="bookmarkButton"
-          className={bookmarked ? 'active' : ''}
-          type="button"
-          aria-label="Bookmark this page"
-          title="Bookmark this page"
-          onClick={(event) => { event.preventDefault(); store().toggleBookmark(); }}
-        >
-          <StarIcon />
-        </button>
-      </form>
-      <nav className="toolbar-actions" aria-label="Browser actions">
-        <button type="button" aria-label="Bookmarks" title="Bookmarks" data-popover-trigger onClick={() => ui().setPopover('bookmarks')}><BookmarkIcon /></button>
-        <button type="button" aria-label="Downloads" title="Downloads" data-popover-trigger onClick={() => ui().setPopover('downloads')}>
-          <DownloadIcon />
-          {downloading && <span className="download-badge" />}
-        </button>
-        <button className="avatar-button" type="button" aria-label="Account" title="Account" data-popover-trigger onClick={() => ui().setPopover('account')}>
-          <span className="avatar-circle"><UserIcon /></span>
-          {signedIn && <span className="account-status-dot" />}
-        </button>
-        <button type="button" aria-label="Settings" title="Settings" data-popover-trigger onClick={() => ui().setPopover('settings')}>
-          <SettingsIcon />
-        </button>
-      </nav>
-    </header>
+        <button className="omniStar" title="Bookmark"><Star size={15} /></button>
+      </div>
+      <div className="toolActions noDrag">
+        <button title="Downloads"><DownloadIcon size={17} /></button>
+        <button title="Menu"><MoreVertical size={17} /></button>
+      </div>
+    </div>
   );
 }

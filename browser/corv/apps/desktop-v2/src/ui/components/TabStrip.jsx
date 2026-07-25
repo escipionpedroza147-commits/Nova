@@ -1,111 +1,53 @@
-import React, { useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useShallow } from 'zustand/react/shallow';
-import { useStore, selectSpaceTabs } from '../store.js';
-import { useUi } from '../uiBus.js';
-import { isNewTab, faviconFor, domainLabel, V_MARK, NEW_TAB_URL, id as makeId } from '../lib/util.js';
-import { getView } from '../lib/webviews.js';
-import { SidebarIcon, PlusIcon, MoreIcon, SpaceIcon } from './icons.jsx';
+import React from 'react';
+import { useStore, NEW_TAB, AI_TAB } from '../store.js';
+import { X, Plus, VCMark, Minus, Square, Sparkles } from './icons.jsx';
 
-const spring = { type: 'spring', stiffness: 550, damping: 45, mass: 0.8 };
-
-function Tab({ tab, active }) {
-  const store = useStore.getState;
-  const ui = useUi.getState;
-  const dragId = useRef(null);
-
-  const onContextMenu = (event) => {
-    event.preventDefault();
-    const s = store();
-    const others = s.tabs.filter((item) => item.spaceId === tab.spaceId && item.id !== tab.id);
-    ui().openContextMenu(event.clientX, event.clientY, [
-      { label: 'New tab to the right', action: () => {
-        const tabs = [...store().tabs];
-        const index = tabs.findIndex((item) => item.id === tab.id);
-        tabs.splice(index + 1, 0, { id: makeId(), url: NEW_TAB_URL, title: 'New Tab', favicon: '', spaceId: tab.spaceId, loading: false, canGoBack: false, canGoForward: false });
-        useStore.setState({ tabs }); store().scheduleSave();
-      } },
-      { label: 'Reload', action: () => getView(tab.id)?.reload() },
-      { label: 'Duplicate', action: () => store().createTab(tab.url, { title: tab.title }) },
-      { label: 'Close tab', action: () => store().closeTab(tab.id) },
-      { label: `Close other tabs${others.length ? ` (${others.length})` : ''}`, action: () => others.forEach((item) => store().closeTab(item.id)) },
-      { label: 'Reopen closed tab', action: () => store().reopenClosedTab() }
-    ]);
-  };
-
-  return (
-    <motion.div
-      layout
-      transition={spring}
-      initial={{ opacity: 0, width: 0, minWidth: 0 }}
-      animate={{ opacity: 1, width: 220, minWidth: 104 }}
-      exit={{ opacity: 0, width: 0, minWidth: 0, paddingLeft: 0, paddingRight: 0, margin: 0, transition: { duration: 0.14, ease: [0.33, 1, 0.68, 1] } }}
-      className={`tab${active ? ' active' : ''}`}
-      role="tab"
-      aria-selected={active}
-      title={tab.title}
-      draggable
-      onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/vcorv-tab', tab.id); }}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => { event.preventDefault(); const fromId = event.dataTransfer.getData('text/vcorv-tab'); if (fromId && fromId !== tab.id) store().moveTab(fromId, tab.id); }}
-      onClick={() => store().activateTab(tab.id)}
-      onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); store().closeTab(tab.id); } }}
-      onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); store().closeTab(tab.id); } }}
-      onContextMenu={onContextMenu}
-    >
-      <span className="tab-divider" />
-      <img className="tab-favicon" src={tab.favicon || (isNewTab(tab.url) ? V_MARK : faviconFor(tab.url))} alt="" />
-      <span className="tab-title">{tab.title || domainLabel(tab.url)}</span>
-      <span className="tab-close" aria-label="Close tab" onClick={(event) => { event.stopPropagation(); store().closeTab(tab.id); }}>×</span>
-    </motion.div>
-  );
+function Favicon({ tab }) {
+  if (tab.url === AI_TAB) return <span className="tabAiIcon"><Sparkles size={13} /></span>;
+  if (tab.url === NEW_TAB || !tab.favicon) return <VCMark size={14} />;
+  return <img className="tabFavicon" src={tab.favicon} alt="" onError={(e) => { e.target.style.display = 'none'; }} />;
 }
 
-export default function TabStrip() {
-  const tabs = useStore(useShallow(selectSpaceTabs));
-  const spaces = useStore((s) => s.spaces);
-  const activeSpaceId = useStore((s) => s.activeSpaceId);
-  const sidebarHidden = useStore((s) => Boolean(s.settings.sidebarHidden));
+export default function TabStrip({ railHidden }) {
+  const allTabs = useStore((s) => s.tabs);
+  const activeSpace = useStore((s) => s.activeSpace);
+  const tabs = allTabs.filter((t) => t.spaceId === activeSpace);
   const activeId = useStore((s) => s.activeId);
-  const store = useStore.getState;
-  const ui = useUi.getState;
+  const activate = useStore((s) => s.activate);
+  const closeTab = useStore((s) => s.closeTab);
+  const newTab = useStore((s) => s.newTab);
+  const isMac = window.vcorv?.platform === 'darwin';
 
   return (
-    <header className="tab-strip" aria-label="Tab strip" onDoubleClick={(event) => { if (event.target.closest('button, .tab')) return; window.vcorv?.windowControl?.('maximize'); }}>
-      <button type="button" aria-label="Toggle sidebar" title="Hide or show sidebar" onClick={() => store().toggleSidebar()}>
-        <SidebarIcon />
-      </button>
-      <div className="tab-zone">
-        <div className="tabs" role="tablist" aria-label="Open tabs">
-          <AnimatePresence initial={false}>
-            {tabs.map((tab) => <Tab key={tab.id} tab={tab} active={tab.id === activeId} />)}
-          </AnimatePresence>
-        </div>
-        <motion.button layout transition={spring} whileTap={{ scale: 0.9 }} className="new-tab-button" type="button" aria-label="New tab" title="New tab (⌘T)" onClick={() => store().createTab()}>
-          <PlusIcon />
-        </motion.button>
-      </div>
-      {sidebarHidden && spaces.length > 0 && (
-        <div className="strip-spaces" aria-label="Spaces">
-          {spaces.map((space) => (
-            <button key={space.id} type="button" className={`strip-space${space.id === activeSpaceId ? ' active' : ''}`} title={space.name} onClick={() => store().switchSpace(space.id)}>
-              <span className="strip-space-icon" style={{ color: space.color }}><SpaceIcon icon={space.icon} /></span>
-              <span className="strip-space-name">{space.name}</span>
+    <div className="tabStrip dragRegion">
+      {isMac && <div className={`macLights ${railHidden ? 'wide' : ''}`} />}
+      <div className="tabs noDrag">
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            className={`tab ${tab.id === activeId ? 'active' : ''}`}
+            onClick={() => activate(tab.id)}
+            onAuxClick={(e) => { if (e.button === 1) closeTab(tab.id); }}
+            title={tab.title}
+          >
+            <span className="tabIcon">{tab.loading ? <span className="tabSpinner" /> : <Favicon tab={tab} />}</span>
+            <span className="tabTitle">{tab.url === NEW_TAB ? 'New Tab' : (tab.title || 'Loading…')}</span>
+            <button className="tabClose" onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}>
+              <X size={12} />
             </button>
-          ))}
-          <button type="button" className="strip-space strip-space-add" aria-label="New space" title="New space" onClick={() => ui().openSpaceModal()}><PlusIcon /></button>
+          </div>
+        ))}
+        <button className="tabNew" onClick={() => newTab()} title="New tab">
+          <Plus size={15} />
+        </button>
+      </div>
+      {!isMac && (
+        <div className="winControls noDrag">
+          <button onClick={() => window.vcorv?.windowControl('minimize')}><Minus size={14} /></button>
+          <button onClick={() => window.vcorv?.windowControl('maximize')}><Square size={12} /></button>
+          <button className="winClose" onClick={() => window.vcorv?.windowControl('close')}><X size={14} /></button>
         </div>
       )}
-      <button type="button" aria-label="Browser menu" title="Menu" data-popover-trigger onClick={() => ui().setPopover('menu')}>
-        <MoreIcon />
-      </button>
-      {window.vcorv?.platform && window.vcorv.platform !== 'darwin' && (
-        <div className="window-controls" aria-label="Window controls">
-          <button type="button" aria-label="Minimize" onClick={() => window.vcorv?.windowControl?.('minimize')}>−</button>
-          <button type="button" aria-label="Maximize" onClick={() => window.vcorv?.windowControl?.('maximize')}><span className="maximize-icon" /></button>
-          <button type="button" aria-label="Close" onClick={() => window.vcorv?.windowControl?.('close')}>×</button>
-        </div>
-      )}
-    </header>
+    </div>
   );
 }

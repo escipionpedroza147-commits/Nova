@@ -57,7 +57,7 @@ function createWindow() {
     title: APP_NAME,
     backgroundColor: '#090a0b',
     ...(process.platform === 'darwin'
-      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 14 } }
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 58, y: 15 } }
       : { frame: false }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
