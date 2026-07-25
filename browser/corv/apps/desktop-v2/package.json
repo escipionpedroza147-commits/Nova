@@ -1,0 +1,24 @@
+{
+  "name": "@corv-browser/desktop-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VCorv clean-slate browser shell prototype",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "npm run build:ui && ../../node_modules/.bin/electron .",
+    "start:legacy": "VCORV_LEGACY_UI=1 ../../node_modules/.bin/electron .",
+    "dev": "node scripts/dev.mjs",
+    "build:ui": "vite build",
+    "check": "node --check src/main.js && node --check src/preload.js"
+  },
+  "dependencies": {
+    "framer-motion": "^12.42.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.3",
+    "vite": "^8.1.4"
+  }
+}
